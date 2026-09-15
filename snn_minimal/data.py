@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from functools import partial
 
 import torch
 from torch.utils.data import DataLoader, Subset
@@ -42,6 +43,8 @@ DATASET_SPECS = {
     ),
 }
 
+CIFAR10_LOGIC_THRESHOLDS = (0.25, 0.5, 0.75)
+
 
 def get_dataset_spec(name: str) -> DatasetSpec:
     key = name.lower()
@@ -50,24 +53,77 @@ def get_dataset_spec(name: str) -> DatasetSpec:
     return DATASET_SPECS[key]
 
 
-def build_transforms(dataset_name: str):
+def _binarize_tensor(x: torch.Tensor, threshold: float) -> torch.Tensor:
+    return (x >= threshold).to(x.dtype)
+
+
+def _threshold_encode_cifar(
+    x: torch.Tensor, thresholds: tuple[float, float, float]
+) -> torch.Tensor:
+    """Encode RGB intensities as three thresholded binary channel groups."""
+    return torch.cat([(x > threshold).to(x.dtype) for threshold in thresholds], dim=0)
+
+
+def _validate_cifar_logic_thresholds(
+    thresholds: tuple[float, ...] | list[float],
+) -> tuple[float, float, float]:
+    values = tuple(float(value) for value in thresholds)
+    if len(values) != 3:
+        raise ValueError("CIFAR Logic-SNN requires exactly three thresholds")
+    if any(value <= 0.0 or value >= 1.0 for value in values):
+        raise ValueError("CIFAR logic thresholds must be in (0, 1)")
+    if tuple(sorted(values)) != values or len(set(values)) != len(values):
+        raise ValueError("CIFAR logic thresholds must be strictly increasing")
+    return values
+
+
+def build_transforms(
+    dataset_name: str,
+    mnist_binarize_threshold: float | None = None,
+    cifar_logic_thresholds: tuple[float, ...] | list[float] | None = None,
+):
     dataset_name = dataset_name.lower()
     if dataset_name == "mnist":
-        train_transform = transforms.Compose(
-            [
-                transforms.ToTensor(),
-                transforms.Normalize((0.1307,), (0.3081,)),
-            ]
-        )
-        test_transform = transforms.Compose(
-            [
-                transforms.ToTensor(),
-                transforms.Normalize((0.1307,), (0.3081,)),
-            ]
-        )
+        if mnist_binarize_threshold is None:
+            transform = transforms.Compose(
+                [
+                    transforms.ToTensor(),
+                    transforms.Normalize((0.1307,), (0.3081,)),
+                ]
+            )
+        else:
+            threshold = float(mnist_binarize_threshold)
+            if not 0.0 <= threshold <= 1.0:
+                raise ValueError("mnist_binarize_threshold must be in [0, 1]")
+            transform = transforms.Compose(
+                [
+                    transforms.ToTensor(),
+                    transforms.Lambda(partial(_binarize_tensor, threshold=threshold)),
+                ]
+            )
+        train_transform = transform
+        test_transform = transform
         return train_transform, test_transform
 
     if dataset_name == "cifar10":
+        if cifar_logic_thresholds is not None:
+            thresholds = _validate_cifar_logic_thresholds(cifar_logic_thresholds)
+            encode = transforms.Lambda(
+                partial(_threshold_encode_cifar, thresholds=thresholds)
+            )
+            train_transform = transforms.Compose(
+                [
+                    transforms.RandomCrop(32, padding=4),
+                    transforms.RandomHorizontalFlip(),
+                    transforms.ToTensor(),
+                    encode,
+                ]
+            )
+            test_transform = transforms.Compose(
+                [transforms.ToTensor(), encode]
+            )
+            return train_transform, test_transform
+
         mean = (0.4914, 0.4822, 0.4465)
         std = (0.2470, 0.2435, 0.2616)
         train_transform = transforms.Compose(
@@ -89,8 +145,17 @@ def build_transforms(dataset_name: str):
     raise ValueError(f"Unsupported dataset: {dataset_name}")
 
 
-def build_datasets(dataset_name: str, data_root: str):
-    train_transform, test_transform = build_transforms(dataset_name)
+def build_datasets(
+    dataset_name: str,
+    data_root: str,
+    mnist_binarize_threshold: float | None = None,
+    cifar_logic_thresholds: tuple[float, ...] | list[float] | None = None,
+):
+    train_transform, test_transform = build_transforms(
+        dataset_name,
+        mnist_binarize_threshold=mnist_binarize_threshold,
+        cifar_logic_thresholds=cifar_logic_thresholds,
+    )
     dataset_name = dataset_name.lower()
 
     if dataset_name == "mnist":
@@ -152,9 +217,15 @@ def build_train_val_dataloaders(
     pin_memory: bool,
     val_ratio: float = 0.1,
     split_seed: int = 42,
+    mnist_binarize_threshold: float | None = None,
+    cifar_logic_thresholds: tuple[float, ...] | list[float] | None = None,
 ):
     dataset_name = dataset_name.lower()
-    train_transform, test_transform = build_transforms(dataset_name)
+    train_transform, test_transform = build_transforms(
+        dataset_name,
+        mnist_binarize_threshold=mnist_binarize_threshold,
+        cifar_logic_thresholds=cifar_logic_thresholds,
+    )
 
     if dataset_name == "mnist":
         train_set_aug = datasets.MNIST(
@@ -220,8 +291,15 @@ def build_test_dataloader(
     batch_size: int,
     num_workers: int,
     pin_memory: bool,
+    mnist_binarize_threshold: float | None = None,
+    cifar_logic_thresholds: tuple[float, ...] | list[float] | None = None,
 ):
-    _, test_set = build_datasets(dataset_name, data_root)
+    _, test_set = build_datasets(
+        dataset_name,
+        data_root,
+        mnist_binarize_threshold=mnist_binarize_threshold,
+        cifar_logic_thresholds=cifar_logic_thresholds,
+    )
     common_kwargs = {
         "batch_size": batch_size,
         "num_workers": num_workers,

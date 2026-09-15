@@ -2,6 +2,11 @@
 
 This repository is intentionally small. It reuses the public `activation_based` stack from [SpikingJelly](https://github.com/fangwei123456/spikingjelly) as a dependency instead of vendoring the framework into this project.
 
+The soft and hard logic-tree layers are adapted from the local reference project
+`/data/linan/MPhil_1/my_convlogic`. The adapted implementation preserves its
+16-operator ordering, fixed connectivity, depth-3 convolutional trees, and
+argmax hard-gate conversion while adding temporal LIF execution.
+
 ## Upstream dependency
 
 - Framework: `spikingjelly`

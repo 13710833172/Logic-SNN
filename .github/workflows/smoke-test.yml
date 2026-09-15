@@ -34,11 +34,15 @@ jobs:
             --limit-train-batches 2 \
             --limit-val-batches 2
 
+      - name: Run Logic-SNN unit tests
+        run: python -m unittest discover -s tests -v
+
       - name: Run evaluation smoke test
         run: |
           LATEST_RUN="$(ls -td runs/mnist/* | head -n 1)"
           python test.py \
             --run-dir "$LATEST_RUN" \
+            --inference both \
             --device cpu \
             --num-workers 0 \
             --limit-test-batches 2
