@@ -18,9 +18,15 @@
 
 ## 方法概述
 
-![Logic-SNN 方法：卷积与全连接逻辑层驱动脉冲神经元，在重复时间步内演化状态，最终按时间与类别分组聚合输出脉冲。](docs/figures/overview.svg)
+分别展示 MNIST 与 CIFAR-10 的代码对应网络结构。特征图、脉冲和逻辑算子分布均为机制示意。
 
-*图 1：逻辑层生成突触输出，经电流缩放驱动脉冲神经元。静态图像在多个时间步重复输入，神经元状态随时间演化，最终通过时间/类别分组均值读出分类分数。导出改变门运算，同时保留时间架构。*
+![MNIST Logic-SNN 详细网络结构](docs/figures/mnist_architecture.svg)
+
+*图 1a：MNIST identity-middle 配置，两个卷积逻辑树阶段、三个 Dense Logic 层，以及 T=4 的脉冲聚合。*
+
+![CIFAR-10 Logic-SNN 详细网络结构](docs/figures/cifar10_architecture.svg)
+
+*图 1b：CIFAR-10 pyramid-m 配置，9 通道阈值输入、四个卷积逻辑树阶段与三个 Dense Logic 层。*
 
 **突触计算。** 每个逻辑门学习 16 种双输入布尔运算的混合。局部深度为 3 的卷积逻辑树提取空间特征，后接全连接逻辑层。hard 模式在固定连接上选择 argmax 对应运算。[逻辑层实现](snn_minimal/models/logic_layers.py)提供两种表示。
 
