@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="440" viewBox="0 0 1200 440" role="img" aria-labelledby="desc">
+<desc id="desc">Logic-SNN applies convolutional logic synapses, current gain and LIF or IF neurons, followed by pooling and dense logic plus spiking neurons. The static image is repeated across timesteps, neuron state evolves, and spikes are averaged over time and class groups.</desc>
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#586574"/></marker></defs>
+<rect width="1200" height="440" fill="white"/>
+<g font-family="Times New Roman, Times, serif" fill="#17212B">
+<rect x="26" y="77" width="145" height="86" rx="4" fill="#EDF5FA" stroke="#0072B2" stroke-width="1.8"/>
+<text x="98.5" y="127.0" font-size="21" text-anchor="middle" font-weight="normal" fill="#17212B">Static image</text>
+<rect x="213" y="77" width="175" height="86" rx="4" fill="#EDF5FA" stroke="#0072B2" stroke-width="1.8"/>
+<text x="300.5" y="114.5" font-size="21" text-anchor="middle" font-weight="normal" fill="#17212B">Conv logic</text>
+<text x="300.5" y="139.5" font-size="21" text-anchor="middle" font-weight="normal" fill="#17212B">synapses</text>
+<rect x="430" y="77" width="155" height="86" rx="4" fill="#EDF5FA" stroke="#0072B2" stroke-width="1.8"/>
+<text x="507.5" y="114.5" font-size="21" text-anchor="middle" font-weight="normal" fill="#17212B">Gain +</text>
+<text x="507.5" y="139.5" font-size="21" text-anchor="middle" font-weight="normal" fill="#17212B">LIF / IF</text>
+<rect x="627" y="77" width="140" height="86" rx="4" fill="#EDF5FA" stroke="#0072B2" stroke-width="1.8"/>
+<text x="697.0" y="114.5" font-size="21" text-anchor="middle" font-weight="normal" fill="#17212B">Max</text>
+<text x="697.0" y="139.5" font-size="21" text-anchor="middle" font-weight="normal" fill="#17212B">pooling</text>
+<rect x="809" y="77" width="165" height="86" rx="4" fill="#EDF5FA" stroke="#0072B2" stroke-width="1.8"/>
+<text x="891.5" y="114.5" font-size="21" text-anchor="middle" font-weight="normal" fill="#17212B">Dense logic</text>
+<text x="891.5" y="139.5" font-size="21" text-anchor="middle" font-weight="normal" fill="#17212B">+ gain + LIF / IF</text>
+<rect x="1016" y="77" width="158" height="86" rx="4" fill="#EDF5FA" stroke="#0072B2" stroke-width="1.8"/>
+<text x="1095.0" y="114.5" font-size="21" text-anchor="middle" font-weight="normal" fill="#17212B">Time / group</text>
+<text x="1095.0" y="139.5" font-size="21" text-anchor="middle" font-weight="normal" fill="#17212B">mean</text>
+<line x1="173" y1="120" x2="206" y2="120" stroke="#586574" stroke-width="1.7" marker-end="url(#arrow)"/>
+<line x1="390" y1="120" x2="423" y2="120" stroke="#586574" stroke-width="1.7" marker-end="url(#arrow)"/>
+<line x1="587" y1="120" x2="620" y2="120" stroke="#586574" stroke-width="1.7" marker-end="url(#arrow)"/>
+<line x1="769" y1="120" x2="802" y2="120" stroke="#586574" stroke-width="1.7" marker-end="url(#arrow)"/>
+<line x1="976" y1="120" x2="1009" y2="120" stroke="#586574" stroke-width="1.7" marker-end="url(#arrow)"/>
+<text x="99" y="48" font-size="19" text-anchor="middle" font-weight="normal" fill="#17212B">Repeat for T steps</text>
+<text x="594" y="34" font-size="23" text-anchor="middle" font-weight="bold" fill="#17212B">Per-timestep computation</text>
+<line x1="213" y1="47" x2="974" y2="47" stroke="#0072B2" stroke-width="1.7"/>
+<text x="1095" y="202" font-size="20" text-anchor="middle" font-weight="normal" fill="#17212B">Class scores</text>
+<line x1="509" y1="165" x2="509" y2="199" stroke="#586574" stroke-width="1.7"/>
+<line x1="892" y1="165" x2="892" y2="199" stroke="#586574" stroke-width="1.7"/>
+<line x1="509" y1="199" x2="892" y2="199" stroke="#586574" stroke-width="1.7"/>
+<line x1="700" y1="199" x2="700" y2="231" stroke="#586574" stroke-width="1.7" marker-end="url(#arrow)"/>
+<rect x="495" y="246" width="410" height="60" rx="4" fill="#EDF5FA" stroke="#0072B2" stroke-width="1.8"/>
+<text x="700.0" y="283.0" font-size="21" text-anchor="middle" font-weight="normal" fill="#17212B">Neuron state evolves from t to t + 1</text>
+<path d="M495 276 H460 V183 H508" fill="none" stroke="#586574" stroke-width="1.7" stroke-dasharray="5 4" marker-end="url(#arrow)"/>
+<text x="219" y="219" font-size="21" text-anchor="middle" font-weight="normal" fill="#17212B">Logic synapses + temporal state</text>
+<line x1="28" y1="330" x2="1172" y2="330" stroke="#D8DEE5" stroke-width="1.7"/>
+<rect x="50" y="358" width="340" height="58" rx="4" fill="#EDF5FA" stroke="#0072B2" stroke-width="1.8"/>
+<text x="220.0" y="394.0" font-size="21" text-anchor="middle" font-weight="normal" fill="#17212B">Soft synapses: operator mixtures</text>
+<line x1="392" y1="387" x2="515" y2="387" stroke="#586574" stroke-width="1.7" marker-end="url(#arrow)"/>
+<text x="454" y="368" font-size="19" text-anchor="middle" font-weight="normal" fill="#17212B">argmax</text>
+<rect x="528" y="358" width="325" height="58" rx="4" fill="#FFF4E5" stroke="#B86E00" stroke-width="1.8"/>
+<text x="690.5" y="394.0" font-size="21" text-anchor="middle" font-weight="normal" fill="#17212B">Hard synapses: discrete gates</text>
+<text x="1025" y="377" font-size="20" text-anchor="middle" font-weight="normal" fill="#17212B">Retain neuron dynamics</text>
+<text x="1025" y="404" font-size="20" text-anchor="middle" font-weight="normal" fill="#17212B">and temporal readout</text>
+</g></svg>

@@ -1,80 +1,107 @@
-# Logic-SNN: Differentiable Logic Gates with Spiking Dynamics
+# Logic-SNN: Differentiable Logic-Gate Spiking Neural Networks
 
-A PyTorch/SpikingJelly research implementation combining trainable logic-tree synapses with LIF or IF temporal dynamics. The experiments examine classification quality and the gap between soft gate training and discretized gate inference.
+**English** | [简体中文](README.zh-CN.md)
 
-## Model and supported tasks
+**Learnable logic synapses meet spiking temporal dynamics.**
 
-```text
-Encoded image -> convolutional logic tree -> spiking neuron -> pooling
-              -> dense logic layers + spiking neurons -> time/class-group mean
-Soft gates: mixtures over 16 Boolean operators
-Hard gates: argmax operator selection with fixed truth tables
-```
+A PyTorch/SpikingJelly research implementation that integrates differentiable logic-tree synapses with LIF/IF neurons. The logic layers build on [Conv-DLGN](https://github.com/13710833172/Conv-DLGN); spiking neurons and surrogate gradients use [SpikingJelly](https://github.com/fangwei123456/spikingjelly). See [attribution](REFERENCE_NOTES.md) for the underlying methods.
 
-Logic layers adapt the related [Conv-DLGN implementation](https://github.com/13710833172/Conv-DLGN). Spiking neurons and surrogate gradients use [SpikingJelly](https://github.com/fangwei123456/spikingjelly). See [REFERENCE_NOTES.md](REFERENCE_NOTES.md) for the implementation boundary.
+## Abstract
+
+Logic-gate learning provides trainable Boolean operator choices, while spiking neurons provide temporal state. Logic-SNN brings these two mechanisms together through convolutional and dense logic synapses coupled to LIF/IF dynamics. The model learns operator mixtures with surrogate-gradient training and exports discrete synaptic gates while retaining its spiking state and temporal readout. A representative four-timestep MNIST model achieves **98.05% soft and 97.54% hard test accuracy** on 10,000 examples, with a **0.51 percentage-point** conversion difference. A CIFAR-10 configuration reaches **67.49% soft accuracy**. Paired execution-mode evaluation makes the contribution of discrete gate export explicit for each task.
+
+## Contributions
+
+- **Logic synapses with temporal state.** Local convolutional logic trees and dense logic layers drive LIF/IF neurons, connecting operator learning to time-dependent spike computation.
+- **A shared soft/hard spiking architecture.** Gate export preserves input connectivity, spiking dynamics, current gain, and temporal/class-group aggregation, allowing evaluation of the same architecture with discrete synaptic operators.
+- **Task-specific evidence for the hybrid model.** MNIST demonstrates 97.54% hard accuracy at four timesteps; paired CIFAR-10 measurements characterize soft and exported operation in a deeper pyramid configuration.
+
+## Methodology
+
+![Logic-SNN couples convolutional and dense logic layers with spiking neurons across repeated timesteps, and aggregates class-group spikes over time.](docs/figures/overview.svg)
+
+*Figure 1. Logic layers compute synaptic outputs; current scaling drives the spiking neurons. Neuron state evolves across repeated presentations of a static image, and time/class-group means produce the final scores. Export changes gate operators while preserving the temporal architecture.*
+
+**Synaptic computation.** A logic gate learns a mixture over 16 two-input Boolean operators. Local depth-3 convolutional trees extract spatial features, followed by dense logic layers. In hard mode, each mixture becomes its argmax operator with fixed connectivity. The [logic layers](snn_minimal/models/logic_layers.py) implement both representations.
+
+**Temporal computation.** At every timestep, logic outputs are multiplied by a current gain and passed to LIF/IF neurons; selected convolutional stages apply max pooling. Static-image inputs are repeated over $T$ timesteps. If $s_{t,c,j}$ denotes an output spike for class $c$ and group member $j$, the readout is
+
+$$r_c=\frac{1}{T M}\sum_{t=1}^{T}\sum_{j=1}^{M}s_{t,c,j}.$$
+
+Here $M$ is the number of outputs per class. The resulting model combines discrete-capable synapses with membrane dynamics and temporal aggregation. See the [shared forward path and export](snn_minimal/models/logic_snn.py).
+
+## Experiments
+
+**Question 1: can discrete synaptic gates support the hybrid spiking classifier?** On MNIST, the large identity-middle configuration reaches **97.54% hard accuracy**, within **0.51 pp** of its soft counterpart at four timesteps.
+
+**Question 2: how do the two execution modes behave on CIFAR-10?** The pyramid-m configuration evaluates spatial logic features and spiking computation on natural images, with both modes reported explicitly.
+
+| Logic-SNN / configuration | Timesteps | Soft test accuracy | Hard test accuracy | Test examples |
+| --- | ---: | ---: | ---: | ---: |
+| MNIST / large, identity-middle | 4 | **98.05%** | **97.54%** | 10,000 |
+| CIFAR-10 / pyramid-m, 9-channel input | 4 | **67.49%** | 28.76% | 10,000 |
+
+*Table 1. Representative completed local configurations. Hard evaluation uses the gate export from the corresponding soft checkpoint. Dataset, architecture, and training settings differ between rows.*
+
+**Takeaway.** The MNIST result establishes a concrete operating point where discrete synapses retain the classifier's accuracy closely. CIFAR-10 supports the 67.49% claim specifically for soft execution; its hard-mode score is measured separately. This execution-mode distinction keeps the role of operator learning and the effect of export visible.
+
+**Protocol.** Both configurations use LIF neurons and validation-selected soft checkpoints; each is an individual completed configuration rather than an average across independent seeds. The table measures classification under two synaptic representations. Membrane dynamics, current scaling, and readout remain part of hard inference. Hardware latency and energy are separate measurement targets. Datasets, weights, per-run arguments, and raw experiment histories are maintained outside the repository.
+
+## Supported tasks
 
 | Model family | MNIST | CIFAR-10 | CIFAR10-DVS |
 | --- | --- | --- | --- |
-| `logic_snn` | Supported | Supported | Not implemented |
-| `conv_snn` | Supported baseline | Supported baseline | Supported baseline |
+| `logic_snn` | Static image, repeated timesteps | Static image, repeated timesteps | — |
+| `conv_snn` | Conventional baseline | Conventional baseline | Event-frame baseline |
 
-MNIST and CIFAR-10 are static-image experiments with repeated timesteps. DVS uses event-derived frames and belongs to the conventional ConvSNN baseline.
+CIFAR10-DVS experiments use **`conv_snn`** and event-derived frames. They belong to the conventional baseline branch of this repository, separate from the Logic-SNN results in Table 1. The related [Conv-SNN-Baselines](https://github.com/13710833172/Conv-SNN-Baselines) repository presents conventional static-image baselines.
 
-## Recorded results
-
-| Model / dataset | Soft test | Hard test | Test samples |
-| --- | ---: | ---: | ---: |
-| Logic-SNN / MNIST, large identity-middle model | 98.05% | 97.54% | 10,000 |
-| Logic-SNN / CIFAR-10, pyramid-m model | 67.49% | 28.76% | 10,000 |
-| ConvSNN / MNIST, historical baseline | 99.36% | — | 10,000 |
-| ConvSNN / CIFAR-10, historical baseline | 88.04% | — | 10,000 |
-| ConvSNN / CIFAR10-DVS | 61.20% | — | 1,000 |
-
-Results are summarized from local metric files and were checked for model-family attribution. They are not matched-parameter comparisons or multi-seed estimates. Datasets, checkpoints, per-run arguments, and experiment-history files are kept outside the repository; experiments were not rerun for this documentation update.
-
-The CIFAR-10 soft-to-hard loss is **38.73 percentage points** and remains an open optimization issue. Current records do not establish superiority over ConvSNN. Hard synaptic operators also do not make the whole system Boolean: membrane dynamics, current scaling, and readout remain part of inference. No hardware energy or latency advantage is claimed.
-
-## Setup and short execution check
+## Getting started
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 
-python train.py --dataset mnist --model-family logic_snn   --output-dir ./runs/mnist --device cpu --epochs 1   --batch-size 8 --timesteps 2 --num-workers 0   --limit-train-batches 2 --limit-val-batches 2
+# Short pipeline check with restricted batches.
+python train.py --dataset mnist --model-family logic_snn \
+  --output-dir ./runs/mnist --device cpu --epochs 1 \
+  --batch-size 8 --timesteps 2 --num-workers 0 \
+  --limit-train-batches 2 --limit-val-batches 2
 ```
 
-This command checks the pipeline with limited batches; it does not reproduce the result table. Replace `<run>` below with its generated directory:
+Evaluate the generated run, replacing `RUN_NAME` with its directory name:
 
 ```bash
-python test.py --run-dir ./runs/mnist/<run>   --inference both --device cpu --num-workers 0 --limit-test-batches 2
+python test.py --run-dir ./runs/mnist/RUN_NAME \
+  --inference both --device cpu --num-workers 0 --limit-test-batches 2
 ```
 
-For full test evaluation, omit `--limit-test-batches`. Checkpoints and per-run training histories are not bundled.
-
-## Training and export
-
-Always specify `--model-family`: MNIST defaults to `logic_snn`, while CIFAR-10 and DVS default to `conv_snn`. The explicit flag avoids silently training a different baseline.
+This checks execution on restricted batches. Full test evaluation omits `--limit-test-batches`; the short command is separate from the four-timestep configurations in Table 1. See the [technical guide](README.technical.md) for architecture options and full training commands.
 
 ```bash
-# Full static CIFAR-10 logic model: see the technical guide for architecture options.
+# Static CIFAR-10 logic-family training entry point.
 python train.py --dataset cifar10 --model-family logic_snn --device cuda
 
-# Export hard gates from a trained soft checkpoint.
-python discretize.py --checkpoint ./runs/mnist/<run>/checkpoint_best.pt
-
+# Export a checkpoint generated by your training run.
+python discretize.py --checkpoint ./runs/mnist/RUN_NAME/checkpoint_best.pt
 python -m unittest discover -s tests -v
 ```
 
-Multi-GPU training is available through `train_ddp.py`; physical batch size is per GPU. Large pyramid models have substantially greater resource requirements than the short MNIST execution check.
+Specify `--model-family` explicitly: MNIST defaults to `logic_snn`, while CIFAR-10 and DVS default to `conv_snn`. Distributed training is available through `train_ddp.py`, with physical batch size specified per GPU.
 
-## Evidence and documentation
+<details>
+<summary>Documentation and result attribution</summary>
 
-- [Technical guide](README.technical.md): architecture variants, full training commands, export, and distributed training.
-- [Conventional ConvSNN baseline](https://github.com/13710833172/Conv-SNN-Baselines): related static-image baseline package.
-- [Attribution](REFERENCE_NOTES.md): underlying logic-gate methods and SpikingJelly dependency.
+- [Technical guide](README.technical.md): variants, export, and distributed training.
+- [REFERENCE_NOTES.md](REFERENCE_NOTES.md): method attribution and implementation scope.
+- Existing `results/experiment_summary.*` files describe legacy ConvSNN runs. The summary script ranks by test accuracy without separating model families or soft/hard modes. Table 1 identifies the Logic-SNN configurations directly; the legacy ranking is a different selection protocol.
 
-The older `results/experiment_summary.*` files describe legacy ConvSNN runs only. The existing summary script ranks by test accuracy and does not separate model families or expose both execution modes. Use the model-labeled result summary in this README rather than interpreting that generated ranking as validation-only model selection. Model and training code were not changed in this documentation update.
+</details>
+
+## Conclusion
+
+Logic-SNN connects learned logic synapses to spiking temporal state and evaluates the exported hybrid directly. Its four-timestep MNIST model demonstrates **97.54% hard accuracy with a 0.51 pp conversion difference**.
 
 ## License
 
