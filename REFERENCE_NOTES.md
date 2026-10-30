@@ -1,39 +1,13 @@
-# Reference Notes
+# References and implementation scope
 
-This repository is intentionally small. It reuses the public `activation_based` stack from [SpikingJelly](https://github.com/fangwei123456/spikingjelly) as a dependency instead of vendoring the framework into this project.
+[Deep Differentiable Logic Gate Networks](https://arxiv.org/abs/2210.08277) — Felix Petersen, Christian Borgelt, Hilde Kuehne, and Oliver Deussen, NeurIPS 2022.
 
-The soft and hard logic-tree layers are adapted from the local reference project
-`/data/linan/MPhil_1/my_convlogic`. The adapted implementation preserves its
-16-operator ordering, fixed connectivity, depth-3 convolutional trees, and
-argmax hard-gate conversion while adding temporal LIF execution.
+[Convolutional Differentiable Logic Gate Networks](https://arxiv.org/abs/2411.04732) — Felix Petersen, Hilde Kuehne, Christian Borgelt, Julian Welzel, and Stefano Ermon, NeurIPS 2024.
 
-## Upstream dependency
+Logic-tree synaptic layers adapt the related [Conv-DLGN project](https://github.com/13710833172/Conv-DLGN), preserving the operator ordering, fixed wiring, convolutional tree structure, and argmax gate export while adding spiking execution. This repository does not claim the underlying differentiable logic-gate formulation as its invention.
 
-- Framework: `spikingjelly`
-- Referenced commit: `b049197b9589211418940c50031d3b7acb603bd6`
-- Installed via `requirements.txt`
+Spiking neurons, ATan surrogate gradients, and reset/execution utilities use [SpikingJelly](https://github.com/fangwei123456/spikingjelly), pinned in requirements.txt to commit `b049197b9589211418940c50031d3b7acb603bd6`.
 
-## What this repository borrows
+Repository-specific work includes combining the logic layers with LIF/IF temporal dynamics, architecture variants, soft/hard checkpoint handling, distributed training, data preparation, and experiment records. These are implementation contributions and do not by themselves establish novelty or hardware efficiency.
 
-- Spiking neuron implementations such as `LIFNode` and `IFNode`
-- Multi-step execution utilities under `activation_based`
-- Weight initialization and network reset helpers
-- The general Conv-BN-Spike-Pool modeling pattern commonly used in SpikingJelly examples
-
-## What is original in this repository
-
-- A compact, inspection-friendly training pipeline for static-image SNN experiments
-- Deterministic train/validation splitting with explicit test-only evaluation
-- Timestamped run directories with lightweight experiment logging
-- Standalone evaluation script that reconstructs a model from saved run metadata
-- Repository-level packaging for reproducibility, CI smoke tests, and experiment summaries
-
-## Why this distinction matters
-
-For a public research portfolio, it is important to separate:
-
-- upstream framework functionality
-- experiment-specific design choices
-- repository engineering added for reproducibility
-
-This project is therefore best understood as a reproducible SNN experiment package built on top of SpikingJelly, not as a reimplementation of the full upstream framework.
+Conventional ConvSNN runs are separate baselines. CIFAR10-DVS currently uses ConvSNN, not Logic-SNN. Dependencies retain their own licenses; the repository LICENSE remains unchanged.
