@@ -18,9 +18,15 @@ Differentiable Boolean logic gates provide learnable synaptic operators, while s
 
 ## Methodology
 
-![Logic-SNN temporal and synaptic architecture](docs/figures/overview.svg)
+The two dataset-specific method figures below follow the implemented architectures and documented research configurations. Feature maps, spikes, and operator distributions are schematic.
 
-*Figure 1. A static image is presented at each of T timesteps. Local logic-tree and dense logic synapses provide input currents to spiking neurons, whose internal states evolve over time; class scores average output spikes across time and output groups.*
+![MNIST method architecture](docs/figures/mnist_architecture.svg)
+
+*Figure 1a. MNIST Logic-SNN (identity-middle configuration): convolutional logic trees (1→96→192), three dense logic layers, and T=4 spike aggregation.*
+
+![CIFAR-10 method architecture](docs/figures/cifar10_architecture.svg)
+
+*Figure 1b. CIFAR-10 Logic-SNN (pyramid-m configuration): three-threshold RGB encoding, four convolutional logic-tree stages, and three dense logic layers.*
 
 **Logic synapses.** Each binary gate learns a mixture over 16 Boolean operations. [Convolutional logic-tree layers](snn_minimal/models/logic_layers.py) combine eight fixed local leaves through seven gates. Dense logic layers use sparse fixed two-input connections. Hard export chooses the highest-logit operator per gate and retains all stored wiring.
 
