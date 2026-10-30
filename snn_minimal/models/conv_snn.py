@@ -82,6 +82,34 @@ class ConvSNN(nn.Module):
             )
             classifier_in_dim = channels * 2 * 8 * 8
 
+        elif self.dataset == "cifar10_dvs":
+            # Same CIFAR-10 stack, with polarity frames resized to 32x32.
+            self.encoder = nn.Sequential(
+                layer.Conv2d(2, channels, kernel_size=3, padding=1, bias=False),
+                layer.BatchNorm2d(channels),
+                spike(),
+                layer.Conv2d(channels, channels, kernel_size=3, padding=1, bias=False),
+                layer.BatchNorm2d(channels),
+                spike(),
+                layer.MaxPool2d(kernel_size=2, stride=2),
+                layer.Conv2d(
+                    channels, channels * 2, kernel_size=3, padding=1, bias=False
+                ),
+                layer.BatchNorm2d(channels * 2),
+                spike(),
+                layer.Conv2d(
+                    channels * 2,
+                    channels * 2,
+                    kernel_size=3,
+                    padding=1,
+                    bias=False,
+                ),
+                layer.BatchNorm2d(channels * 2),
+                spike(),
+                layer.MaxPool2d(kernel_size=2, stride=2),
+            )
+            classifier_in_dim = channels * 2 * 8 * 8
+
         else:
             raise ValueError(f"Unsupported dataset: {dataset}")
 
@@ -99,7 +127,15 @@ class ConvSNN(nn.Module):
         functional.set_step_mode(self, step_mode="m")
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x_seq = x.unsqueeze(0).expand(self.timesteps, -1, -1, -1, -1)
+        if self.dataset == "cifar10_dvs":
+            if x.dim() != 5 or x.size(1) != self.timesteps or x.size(2) != 2:
+                raise ValueError(
+                    "CIFAR10-DVS expects input "
+                    f"[B, {self.timesteps}, 2, H, W], got {tuple(x.shape)}"
+                )
+            x_seq = x.transpose(0, 1).contiguous()
+        else:
+            x_seq = x.unsqueeze(0).expand(self.timesteps, -1, -1, -1, -1)
         x_seq = self.encoder(x_seq)
         x_seq = self.classifier(x_seq)
         return x_seq.mean(0)

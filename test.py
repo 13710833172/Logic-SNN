@@ -134,6 +134,8 @@ def main():
             if dataset == "cifar10" and model_family == "logic_snn"
             else None
         ),
+        dvs_frames=int(train_args.get("timesteps", 4)),
+        split_seed=int(train_args.get("split_seed", 42)),
     )
 
     print(f"device={device}")

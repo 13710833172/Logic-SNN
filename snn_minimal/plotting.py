@@ -7,11 +7,28 @@ from typing import Optional, Sequence, TextIO
 
 import matplotlib
 import numpy as np
+from matplotlib.cm import ScalarMappable
+from matplotlib.colors import Normalize
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 from snn_minimal.engine import EpochMetrics
+
+_CM_STYLE = {
+    "font.family": "Liberation Sans",
+    "font.size": 9,
+    "axes.titlesize": 11,
+    "axes.labelsize": 10,
+    "axes.linewidth": 0.7,
+    "svg.fonttype": "path",
+}
+_CM_CMAP = "Blues"
+_CM_TITLES = {
+    "mnist": "Confusion matrix (MNIST)",
+    "cifar10": "Confusion matrix (CIFAR-10)",
+    "cifar10_dvs": "Confusion matrix (CIFAR10-DVS)",
+}
 
 LOG_PATTERN = re.compile(
     r"epoch=(?P<epoch>\d+)\s+"
@@ -103,16 +120,15 @@ def plot_training_curves(
     return loss_path, acc_path
 
 
-def plot_confusion_matrix(
+def confusion_matrix_title(dataset: str) -> str:
+    return _CM_TITLES.get(dataset.lower(), "Confusion matrix")
+
+
+def _confusion_counts(
     y_true: Sequence[int],
     y_pred: Sequence[int],
-    run_dir: Path,
-    class_names: Optional[Sequence[str]] = None,
-) -> Path:
-    out_path = run_dir / "confusion_matrix.svg"
-    if not y_true:
-        return out_path
-
+    class_names: Optional[Sequence[str]],
+) -> tuple[np.ndarray, list[str]]:
     labels = np.array(y_true, dtype=int)
     preds = np.array(y_pred, dtype=int)
     if class_names:
@@ -127,30 +143,140 @@ def plot_confusion_matrix(
         num_classes = observed + 1
         names = [str(i) for i in range(num_classes)]
 
-    matrix = np.zeros((num_classes, num_classes), dtype=int)
+    matrix = np.zeros((num_classes, num_classes), dtype=float)
     for true_label, pred_label in zip(labels, preds, strict=True):
         if 0 <= true_label < num_classes and 0 <= pred_label < num_classes:
             matrix[true_label, pred_label] += 1
+    return matrix, names
 
-    fig_size = max(6.0, 0.55 * num_classes + 2.0)
-    fig, ax = plt.subplots(figsize=(fig_size, fig_size))
-    image = ax.imshow(matrix, interpolation="nearest", cmap="Blues")
-    fig.colorbar(image, ax=ax, fraction=0.046, pad=0.04)
-    ax.set_title("Confusion Matrix (Validation)")
-    ax.set_xlabel("Predicted")
-    ax.set_ylabel("True")
-    ax.set_xticks(range(num_classes), names, rotation=45, ha="right")
-    ax.set_yticks(range(num_classes), names)
 
-    threshold = matrix.max() / 2.0 if matrix.size else 0.0
-    for i in range(num_classes):
-        for j in range(num_classes):
-            color = "white" if matrix[i, j] > threshold else "black"
-            ax.text(j, i, str(matrix[i, j]), ha="center", va="center", color=color, fontsize=8)
+def _row_percentages(counts: np.ndarray) -> np.ndarray:
+    totals = counts.sum(axis=1, keepdims=True)
+    percentages = np.zeros_like(counts, dtype=float)
+    np.divide(counts, totals, out=percentages, where=totals > 0)
+    return percentages * 100.0
 
+
+def _annotation_color(value: float, cmap, norm: Normalize) -> str:
+    red, green, blue, _ = cmap(norm(value))
+    luminance = 0.2126 * red + 0.7152 * green + 0.0722 * blue
+    return "white" if luminance < 0.45 else "black"
+
+
+def _paint_matrix(ax, percentages: np.ndarray, title: str, fontsize: float, grid_lw: float, title_pad: float, cmap, norm: Normalize) -> None:
+    num_classes = percentages.shape[0]
+    ax.imshow(
+        percentages,
+        cmap=cmap,
+        norm=norm,
+        interpolation="nearest",
+        aspect="equal",
+        zorder=1,
+    )
+    for edge in range(num_classes + 1):
+        ax.axhline(edge - 0.5, color="white", linewidth=grid_lw, zorder=2)
+        ax.axvline(edge - 0.5, color="white", linewidth=grid_lw, zorder=2)
+    ax.tick_params(axis="both", which="both", length=3.0, width=0.7, direction="out", pad=2)
+    ax.set_title(title, pad=title_pad)
+    for spine in ax.spines.values():
+        spine.set_color("black")
+        spine.set_linewidth(0.7)
+        spine.set_zorder(4)
+    for row in range(num_classes):
+        for col in range(num_classes):
+            value = percentages[row, col]
+            ax.text(
+                col,
+                row,
+                f"{value:.1f}",
+                ha="center",
+                va="center",
+                color=_annotation_color(value, cmap, norm),
+                fontsize=fontsize,
+                zorder=3,
+            )
+
+
+def _set_category_ticks(ax, labels: Sequence[str], rotate_x: bool, tick_size: float) -> None:
+    ax.set_xticks(range(len(labels)))
+    ax.set_yticks(range(len(labels)))
+    ax.set_xticklabels(labels, fontsize=tick_size)
+    ax.set_yticklabels(labels, fontsize=tick_size)
+    if rotate_x:
+        plt.setp(ax.get_xticklabels(), rotation=45, ha="right", rotation_mode="anchor")
+
+
+def _add_left_colorbar(fig, cax, cmap, norm: Normalize) -> None:
+    colorbar = fig.colorbar(ScalarMappable(norm=norm, cmap=cmap), cax=cax, ticks=[0, 100])
+    colorbar.ax.yaxis.set_ticks_position("left")
+    colorbar.ax.yaxis.set_label_position("left")
+    colorbar.set_label("Pct. (%)", labelpad=6)
+    colorbar.ax.tick_params(length=3.0, width=0.7, labelsize=8.5, pad=2)
+    colorbar.outline.set_linewidth(0.7)
+
+
+def _save_digit_confusion(percentages: np.ndarray, names: Sequence[str], title: str, out_path: Path, cmap, norm: Normalize) -> None:
+    fig, ax = plt.subplots(figsize=(5.15, 4.55))
+    _paint_matrix(ax, percentages, title, 7.2, 1.15, 8, cmap, norm)
+    _set_category_ticks(ax, names, rotate_x=False, tick_size=8.5)
+    ax.set_xlabel("Predicted categories", labelpad=4)
+    ax.set_ylabel("Ground truth categories")
+    colorbar = fig.colorbar(
+        ScalarMappable(norm=norm, cmap=cmap),
+        ax=ax,
+        location="left",
+        fraction=0.046,
+        pad=0.16,
+        ticks=[0, 100],
+    )
+    colorbar.ax.yaxis.set_ticks_position("left")
+    colorbar.ax.yaxis.set_label_position("left")
+    colorbar.set_label("Pct. (%)", labelpad=6)
+    colorbar.ax.tick_params(length=3.0, width=0.7, labelsize=8.5, pad=2)
+    colorbar.outline.set_linewidth(0.7)
     fig.tight_layout()
     fig.savefig(out_path, format="svg", bbox_inches="tight")
     plt.close(fig)
+
+
+def _save_named_confusion(percentages: np.ndarray, names: Sequence[str], title: str, out_path: Path, cmap, norm: Normalize) -> None:
+    fig_w, fig_h = 5.67, 5.05
+    heat, bottom, left_x = 3.55, 0.92, 1.67
+    cbar_x, cbar_w = 0.52, 0.15
+    fig = plt.figure(figsize=(fig_w, fig_h))
+    ax = fig.add_axes([left_x / fig_w, bottom / fig_h, heat / fig_w, heat / fig_h])
+    cax = fig.add_axes([cbar_x / fig_w, bottom / fig_h, cbar_w / fig_w, heat / fig_h])
+    _paint_matrix(ax, percentages, title, 6.7, 1.05, 7, cmap, norm)
+    _set_category_ticks(ax, names, rotate_x=True, tick_size=8.0)
+    ax.set_xlabel("Predicted categories", labelpad=4)
+    ax.set_ylabel("Ground truth categories", labelpad=4)
+    _add_left_colorbar(fig, cax, cmap, norm)
+    fig.savefig(out_path, format="svg")
+    plt.close(fig)
+
+
+def plot_confusion_matrix(
+    y_true: Sequence[int],
+    y_pred: Sequence[int],
+    run_dir: Path,
+    class_names: Optional[Sequence[str]] = None,
+    title: Optional[str] = None,
+) -> Path:
+    out_path = run_dir / "confusion_matrix.svg"
+    if not y_true:
+        return out_path
+
+    counts, names = _confusion_counts(y_true, y_pred, class_names)
+    percentages = _row_percentages(counts)
+    cmap = plt.get_cmap(_CM_CMAP)
+    norm = Normalize(vmin=0, vmax=100)
+    figure_title = title or "Confusion matrix"
+    named = any(len(name) > 1 for name in names)
+    with plt.rc_context(_CM_STYLE):
+        if named:
+            _save_named_confusion(percentages, names, figure_title, out_path, cmap, norm)
+        else:
+            _save_digit_confusion(percentages, names, figure_title, out_path, cmap, norm)
     return out_path
 
 
@@ -198,6 +324,7 @@ class TrainingRecorder:
         y_true: Optional[Sequence[int]] = None,
         y_pred: Optional[Sequence[int]] = None,
         class_names: Optional[Sequence[str]] = None,
+        title: Optional[str] = None,
     ) -> tuple[Path, Path, Path | None]:
         self._log_file.close()
         loss_path, acc_path = plot_training_curves(self.history, self.run_dir)
@@ -208,6 +335,7 @@ class TrainingRecorder:
                 y_pred=y_pred,
                 run_dir=self.run_dir,
                 class_names=class_names,
+                title=title,
             )
         if self.history["epochs"]:
             saved = f"saved plots: {loss_path}, {acc_path}"

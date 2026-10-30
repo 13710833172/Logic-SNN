@@ -3,7 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from functools import partial
 
+import numpy as np
 import torch
+import torch.nn.functional as F
 from torch.utils.data import DataLoader, Subset
 from torchvision import datasets, transforms
 
@@ -41,9 +43,28 @@ DATASET_SPECS = {
             "truck",
         ),
     ),
+    "cifar10_dvs": DatasetSpec(
+        name="cifar10_dvs",
+        in_channels=2,
+        image_size=32,
+        class_names=(
+            "airplane",
+            "automobile",
+            "bird",
+            "cat",
+            "deer",
+            "dog",
+            "frog",
+            "horse",
+            "ship",
+            "truck",
+        ),
+    ),
 }
 
 CIFAR10_LOGIC_THRESHOLDS = (0.25, 0.5, 0.75)
+CIFAR10_DVS_IMAGE_SIZE = 32
+CIFAR10_DVS_TEST_RATIO = 0.1
 
 
 def get_dataset_spec(name: str) -> DatasetSpec:
@@ -145,18 +166,83 @@ def build_transforms(
     raise ValueError(f"Unsupported dataset: {dataset_name}")
 
 
+class CIFAR10DVSFrameTransform:
+    """Resize polarity frames to the CIFAR-10 spatial size and binarize events."""
+
+    def __init__(self, image_size: int = CIFAR10_DVS_IMAGE_SIZE, augment: bool = False):
+        self.image_size = int(image_size)
+        self.augment = augment
+
+    def __call__(self, frames):
+        x = torch.as_tensor(np.asarray(frames), dtype=torch.float32)
+        if x.ndim != 4:
+            raise ValueError(
+                f"CIFAR10-DVS frames must be [T, C, H, W], got shape {tuple(x.shape)}"
+            )
+        x = F.interpolate(
+            x, size=(self.image_size, self.image_size), mode="nearest"
+        )
+        x = (x > 0).to(dtype=torch.float32)
+        if not self.augment:
+            return x
+
+        x = F.pad(x, (4, 4, 4, 4))
+        top = int(torch.randint(0, 9, ()).item())
+        left = int(torch.randint(0, 9, ()).item())
+        x = x[:, :, top : top + self.image_size, left : left + self.image_size]
+        if torch.rand(()) < 0.5:
+            x = x.flip(-1)
+        return x
+
+
+def _cifar10_dvs_dataset(data_root: str, frames: int, augment: bool):
+    from spikingjelly.datasets.cifar10_dvs import CIFAR10DVS
+
+    return CIFAR10DVS(
+        root=data_root,
+        data_type="frame",
+        frames_number=int(frames),
+        split_by="number",
+        transform=CIFAR10DVSFrameTransform(augment=augment),
+    )
+
+
+def _cifar10_dvs_pool_indices(
+    total_size: int, split_seed: int
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Hold out a fixed test split; the remainder is the training pool."""
+    test_size = max(1, int(total_size * CIFAR10_DVS_TEST_RATIO))
+    generator = torch.Generator().manual_seed(split_seed)
+    indices = torch.randperm(total_size, generator=generator)
+    test_indices = indices[:test_size]
+    train_indices = indices[test_size:]
+    return train_indices, test_indices
+
+
 def build_datasets(
     dataset_name: str,
     data_root: str,
     mnist_binarize_threshold: float | None = None,
     cifar_logic_thresholds: tuple[float, ...] | list[float] | None = None,
+    dvs_frames: int = 4,
+    split_seed: int = 42,
 ):
+    dataset_name = dataset_name.lower()
+    if dataset_name == "cifar10_dvs":
+        eval_set = _cifar10_dvs_dataset(data_root, frames=dvs_frames, augment=False)
+        train_indices, test_indices = _cifar10_dvs_pool_indices(
+            len(eval_set), split_seed
+        )
+        return (
+            Subset(eval_set, train_indices.tolist()),
+            Subset(eval_set, test_indices.tolist()),
+        )
+
     train_transform, test_transform = build_transforms(
         dataset_name,
         mnist_binarize_threshold=mnist_binarize_threshold,
         cifar_logic_thresholds=cifar_logic_thresholds,
     )
-    dataset_name = dataset_name.lower()
 
     if dataset_name == "mnist":
         train_set = datasets.MNIST(
@@ -219,8 +305,28 @@ def build_train_val_dataloaders(
     split_seed: int = 42,
     mnist_binarize_threshold: float | None = None,
     cifar_logic_thresholds: tuple[float, ...] | list[float] | None = None,
+    dvs_frames: int = 4,
 ):
     dataset_name = dataset_name.lower()
+    if dataset_name == "cifar10_dvs":
+        train_set_aug = _cifar10_dvs_dataset(data_root, frames=dvs_frames, augment=True)
+        train_set_eval = _cifar10_dvs_dataset(
+            data_root, frames=dvs_frames, augment=False
+        )
+        pool_indices, _ = _cifar10_dvs_pool_indices(len(train_set_aug), split_seed)
+        inner_train, inner_val = _split_train_val_indices(
+            total_size=len(pool_indices), val_ratio=val_ratio, split_seed=split_seed
+        )
+        train_indices = pool_indices[inner_train]
+        val_indices = pool_indices[inner_val]
+        return _make_loaders(
+            Subset(train_set_aug, train_indices.tolist()),
+            Subset(train_set_eval, val_indices.tolist()),
+            batch_size=batch_size,
+            num_workers=num_workers,
+            pin_memory=pin_memory,
+        )
+
     train_transform, test_transform = build_transforms(
         dataset_name,
         mnist_binarize_threshold=mnist_binarize_threshold,
@@ -260,16 +366,22 @@ def build_train_val_dataloaders(
         total_size=len(train_set_aug), val_ratio=val_ratio, split_seed=split_seed
     )
 
-    train_set = Subset(train_set_aug, train_indices.tolist())
-    val_set = Subset(train_set_eval, val_indices.tolist())
+    return _make_loaders(
+        Subset(train_set_aug, train_indices.tolist()),
+        Subset(train_set_eval, val_indices.tolist()),
+        batch_size=batch_size,
+        num_workers=num_workers,
+        pin_memory=pin_memory,
+    )
 
+
+def _make_loaders(train_set, val_set, batch_size: int, num_workers: int, pin_memory: bool):
     common_kwargs = {
         "batch_size": batch_size,
         "num_workers": num_workers,
         "pin_memory": pin_memory,
         "persistent_workers": num_workers > 0,
     }
-
     train_loader = DataLoader(
         train_set,
         shuffle=True,
@@ -293,12 +405,16 @@ def build_test_dataloader(
     pin_memory: bool,
     mnist_binarize_threshold: float | None = None,
     cifar_logic_thresholds: tuple[float, ...] | list[float] | None = None,
+    dvs_frames: int = 4,
+    split_seed: int = 42,
 ):
     _, test_set = build_datasets(
         dataset_name,
         data_root,
         mnist_binarize_threshold=mnist_binarize_threshold,
         cifar_logic_thresholds=cifar_logic_thresholds,
+        dvs_frames=dvs_frames,
+        split_seed=split_seed,
     )
     common_kwargs = {
         "batch_size": batch_size,

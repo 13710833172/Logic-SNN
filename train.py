@@ -29,12 +29,14 @@ from snn_minimal.models import (
     default_model_family,
     save_hard_checkpoint,
 )
-from snn_minimal.plotting import setup_recorder
+from snn_minimal.plotting import confusion_matrix_title, setup_recorder
 
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Train Logic-SNN or legacy Conv-SNN")
-    parser.add_argument("--dataset", choices=["mnist", "cifar10"], required=True)
+    parser.add_argument(
+        "--dataset", choices=["mnist", "cifar10", "cifar10_dvs"], required=True
+    )
     parser.add_argument(
         "--model-family",
         choices=["logic_snn", "conv_snn"],
@@ -329,6 +331,7 @@ def main():
             if args.dataset == "cifar10" and run_args["model_family"] == "logic_snn"
             else None
         ),
+        dvs_frames=args.timesteps,
     )
 
     model = build_model_from_args(run_args).to(device)
@@ -382,6 +385,10 @@ def main():
         )
         start_epoch = int(checkpoint["epoch"]) + 1
         best_acc = float(checkpoint.get("best_acc", 0.0))
+        if args.lr_scheduler == "cosine" and hasattr(scheduler, "T_max"):
+            # Keep the completed steps, but finish the cosine at the requested epoch count
+            # instead of starting a second cycle.
+            scheduler.T_max = args.epochs
 
     early_stopping_best = best_acc
     epochs_without_improvement = 0
@@ -503,6 +510,7 @@ def main():
         y_true=y_true,
         y_pred=y_pred,
         class_names=dataset_spec.class_names,
+        title=confusion_matrix_title(args.dataset),
     )
 
     if isinstance(model, LogicSNN):

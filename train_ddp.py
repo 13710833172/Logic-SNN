@@ -22,7 +22,7 @@ from snn_minimal.engine import (
 )
 from snn_minimal.models import LogicSNN, build_model_from_args, default_model_family
 from snn_minimal.models import save_hard_checkpoint
-from snn_minimal.plotting import setup_recorder
+from snn_minimal.plotting import confusion_matrix_title, setup_recorder
 from train import (
     build_optimizer,
     build_scheduler,
@@ -154,7 +154,12 @@ def _rank_zero_finalize(
         limit_batches=args.limit_val_batches,
         desc="confusion",
     )
-    recorder.finalize(y_true, y_pred, dataset_spec.class_names)
+    recorder.finalize(
+        y_true,
+        y_pred,
+        dataset_spec.class_names,
+        title=confusion_matrix_title(args.dataset),
+    )
 
     if not isinstance(model, LogicSNN):
         return
@@ -263,6 +268,7 @@ def distributed_main():
                 if args.dataset == "cifar10" and run_args["model_family"] == "logic_snn"
                 else None
             ),
+            dvs_frames=args.timesteps,
         )
         train_loader, train_sampler = _distributed_loader(
             full_train_loader, rank, world_size, is_train=True, seed=args.seed
